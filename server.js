@@ -29,6 +29,9 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Объект для хранения состояния общения
+const userStates = {};
+
 // Функция для добавления или обновления предпочтений пользователя
 const savePreference = (username, subject) => {
     db.run("INSERT INTO user_preferences (username, subject) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET subject = ?", [username, subject, subject], (err) => {
@@ -55,6 +58,11 @@ io.on('connection', (socket) => {
 
     const username = socket.id; // Используем ID сокета как уникальное имя пользователя
 
+    // Инициализация состояния пользователя
+    userStates[username] = {
+        currentTopic: null,
+    };
+
     // Обработка входящих сообщений
     socket.on('chat message', (msg) => {
         const response = getResponse(msg, username);
@@ -76,11 +84,13 @@ io.on('connection', (socket) => {
     // Обработка сохранения предпочтений
     socket.on('save preference', (subject) => {
         savePreference(username, subject);
+        userStates[username].currentTopic = subject; // Сохраняем текущую тему
         socket.emit('chat message', `Ваше предпочтение сохранено: ${subject}.`);
     });
 
     socket.on('disconnect', () => {
         console.log('Пользователь отключился');
+        delete userStates[username]; // Удаляем состояние пользователя
     });
 });
 
@@ -88,13 +98,27 @@ io.on('connection', (socket) => {
 function getResponse(message, username) {
     const lowerCaseMessage = message.toLowerCase();
 
+    // Обработка темы математики
+    if (userStates[username].currentTopic === "математика") {
+        if (lowerCaseMessage.includes("алгебра")) {
+            return "Алгебра — это область математики, которая изучает операции с числами и символами. Какой аспект алгебры вас интересует?";
+        } else if (lowerCaseMessage.includes("геометрия")) {
+            return "Геометрия изучает свойства фигур и пространственные отношения. Какой вопрос по геометрии вас интересует?";
+        }
+    }
+
+    // Общие ответы
     if (lowerCaseMessage.includes("математика")) {
+        userStates[username].currentTopic = "математика"; // Устанавливаем текущую тему
         return "Что именно по математике вас интересует? Примеры: алгебра, геометрия.";
     } else if (lowerCaseMessage.includes("история")) {
+        userStates[username].currentTopic = "история"; // Устанавливаем текущую тему
         return "Какой период истории вас интересует? Например, Древний Рим или Вторая мировая война.";
     } else if (lowerCaseMessage.includes("наука")) {
+        userStates[username].currentTopic = "наука"; // Устанавливаем текущую тему
         return "Какая наука вас интересует? Физика, химия или биология?";
     } else if (lowerCaseMessage.includes("язык")) {
+        userStates[username].currentTopic = "язык"; // Устанавливаем текущую тему
         return "Какой язык вы изучаете? Английский, испанский или что-то еще?";
     } else if (lowerCaseMessage.includes("поиск")) {
         const query = message.replace("поиск", "").trim();
