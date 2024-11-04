@@ -29,6 +29,9 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Объект для хранения состояния общения
+const userStates = {};
+
 // Функция для добавления или обновления предпочтений пользователя
 const savePreference = (username, subject) => {
     db.run("INSERT INTO user_preferences (username, subject) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET subject = ?", [username, subject, subject], (err) => {
@@ -55,9 +58,14 @@ io.on('connection', (socket) => {
 
     const username = socket.id; // Используем ID сокета как уникальное имя пользователя
 
+    // Инициализация состояния пользователя
+    userStates[username] = {
+        currentTopic: null,
+    };
+
     // Обработка входящих сообщений
     socket.on('chat message', async (msg) => {
-        const response = await getResponse(msg);
+        const response = await getResponse(msg, username);
         io.emit('chat message', response);
     });
 
@@ -76,21 +84,39 @@ io.on('connection', (socket) => {
     // Обработка сохранения предпочтений
     socket.on('save preference', (subject) => {
         savePreference(username, subject);
+        userStates[username].currentTopic = subject; // Сохраняем текущую тему
         socket.emit('chat message', `Ваше предпочтение сохранено: ${subject}.`);
     });
 
     socket.on('disconnect', () => {
         console.log('Пользователь отключился');
+        delete userStates[username]; // Удаляем состояние пользователя
     });
 });
 
 // Функция для обработки сообщений
-async function getResponse(message) {
+async function getResponse(message, username) {
     const lowerCaseMessage = message.toLowerCase();
 
-    // Использование Wikipedia API для получения информации по введенной теме
-    if (lowerCaseMessage) {
+    // Проверяем, какую тему выбрал пользователь
+    if (userStates[username].currentTopic) {
+        // Используем Wikipedia API для получения информации по выбранной теме
         return await searchWikipedia(lowerCaseMessage);
+    }
+
+    // Если нет текущей темы, задаем вопрос
+    if (lowerCaseMessage.includes("математика")) {
+        userStates[username].currentTopic = "математика"; // Устанавливаем текущую тему
+        return "Что именно по математике вас интересует? Примеры: алгебра, геометрия.";
+    } else if (lowerCaseMessage.includes("история")) {
+        userStates[username].currentTopic = "история"; // Устанавливаем текущую тему
+        return "Какой период истории вас интересует? Например, Древний Рим или Вторая мировая война.";
+    } else if (lowerCaseMessage.includes("наука")) {
+        userStates[username].currentTopic = "наука"; // Устанавливаем текущую тему
+        return "Какая наука вас интересует? Физика, химия или биология?";
+    } else if (lowerCaseMessage.includes("язык")) {
+        userStates[username].currentTopic = "язык"; // Устанавливаем текущую тему
+        return "Какой язык вы изучаете? Английский, испанский или что-то еще?";
     }
 
     return "Извините, я не знаю, как на это ответить.";
@@ -104,8 +130,8 @@ async function searchWikipedia(query) {
         const response = await axios.get(url);
         const results = response.data.query.search;
         if (results.length > 0) {
-            // Формируем ответ, используя заголовки статей
-            return `Результаты поиска по теме "${query}": ${results.map(result => result.title).join(', ')}.`;
+            const firstResult = results[0]; // Берем первый результат
+            return `Вот что я нашел по теме "${query}": ${firstResult.title} - [Wikipedia] https://ru.wikipedia.org/wiki/${encodeURIComponent(firstResult.title)}`;
         } else {
             return "К сожалению, ничего не найдено.";
         }
