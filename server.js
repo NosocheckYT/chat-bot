@@ -2,16 +2,31 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./preferences.db');
+const axios = require('axios');
+const cors = require('cors');
+const path = require('path');
 
-// Инициализация Express
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
+// Использование CORS
+app.use(cors());
+
+// Отдача статических файлов
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Создание базы данных
+const db = new sqlite3.Database('./preferences.db');
+
 // Создание таблицы при инициализации
 db.serialize(() => {
     db.run("CREATE TABLE IF NOT EXISTS user_preferences (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, subject TEXT)");
+});
+
+// Обработка GET запроса на корневой маршрут
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Функция для добавления или обновления предпочтений пользователя
@@ -89,8 +104,6 @@ function getResponse(message, username) {
 }
 
 // Функция для поиска в Wikipedia
-const axios = require('axios');
-
 async function searchWikipedia(query) {
     const url = `https://ru.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json`;
 
